@@ -418,7 +418,7 @@ class SettingInterface(ScrollArea):
         )
         self.weeklyDivergentEnableCard = SwitchSettingCard1(
             FIF.VPN,
-            self.tr('每两周优先运行一次差分宇宙'),
+            self.tr('每两周优先运行一次差分宇宙（独立选项，和顶部启用模拟宇宙选项无关）'),
             "如需执行周期演算，请自行打开 “主页→模拟宇宙→原版运行”，然后勾选“周期演算”",
             "weekly_divergent_enable"
         )
@@ -702,8 +702,7 @@ class SettingInterface(ScrollArea):
             FIF.POWER_BUTTON,
             self.tr('任务完成后'),
             self.tr('其中“退出”指退出游戏，“循环”指7×24小时无人值守循环运行程序（仅限完整运行生效）'),
-            texts={'无': 'None', '退出': 'Exit', '循环': 'Loop',
-                   '关机': 'Shutdown', '睡眠': 'Sleep', '休眠': 'Hibernate', '重启': 'Restart', '注销': 'Logoff', '运行脚本': 'RunScript'}
+            texts={'无': 'None', '退出': 'Exit', '循环': 'Loop', '关机': 'Shutdown', '睡眠': 'Sleep', '休眠': 'Hibernate', '重启': 'Restart', '注销': 'Logoff', '关闭显示器': 'TurnOffDisplay', '运行脚本': 'RunScript'}
         )
         self.ScriptPathCard = PushSettingCard(
             self.tr('修改'),
