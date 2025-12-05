@@ -177,7 +177,9 @@ class CurrencyWars:
         选择关卡难度
         """
         log.info("选择关卡")
-        pos = auto.find_element("./assets/images/screen/currency_wars/level_down.png", "image", 20000)
+        # 避免低性能设备加载过慢
+        time.sleep(6)  # 等待界面加载
+        pos = auto.find_element("./assets/images/screen/currency_wars/level_down.png", "image", 100000)
         for _ in range(40):
             if auto.find_element(f"./assets/images/screen/currency_wars/level_1.png", "image", 0.95, crop=(440.0 / 1920, 892.0 / 1080, 385.0 / 1920, 137.0 / 1080)):
                 log.info(f"已选择敌人难度为1的关卡")
@@ -419,14 +421,40 @@ class CurrencyWars:
 
         forward_slots = len(self.forward_characters)
         backward_slots = len(self.backward_characters)
-        all_forward_count = sum(1 for c in all_chars if c["c"].pos in ("forward", "all"))
 
-        # 按 money 降序，金额相同则按 pos 优先级排序 (forward > backward > all)
-        if all_forward_count < min(forward_slots, limit):
-            pos_priority = {"forward": 0, "all": 1, "backward": 2}
-        else:
-            pos_priority = {"forward": 0, "backward": 1, "all": 2}
-        all_chars.sort(key=lambda x: (-x["c"].money, pos_priority.get(x["c"].pos, 3)))
+        # 先从可前台的角色里选出最多 min(forward_slots, limit) 个：按 money 降序，金额相同 pos 优先级 forward > all，去重按名字
+        forward_candidates = [item for item in all_chars if item["c"].pos in ("forward", "all")]
+        forward_candidates.sort(key=lambda x: (-x["c"].money, 0 if x["c"].pos == "forward" else 1))
+        top_forward: list[dict] = []
+        top_forward_names: set[str] = set()
+        duplicates_forward: list[dict] = []
+        for item in forward_candidates:
+            name = item["c"].name
+            if name and name not in top_forward_names and len(top_forward) < min(forward_slots, limit):
+                top_forward.append(item)
+                top_forward_names.add(name)
+            elif name in top_forward_names:
+                duplicates_forward.append(item)
+
+        # 剩余角色按 money 降序，金额相同 pos 优先级 forward > backward > all，同样去重，重复的放末尾
+        pos_priority = {"forward": 0, "backward": 1, "all": 2}
+        remaining_pool = [item for item in all_chars if item not in top_forward and item not in duplicates_forward]
+        remaining_pool.sort(key=lambda x: (-x["c"].money, pos_priority.get(x["c"].pos, 3)))
+
+        remaining_unique: list[dict] = []
+        remaining_names: set[str] = set()
+        duplicates_rest: list[dict] = []
+        for item in remaining_pool:
+            name = item["c"].name
+            if name and name not in top_forward_names and name not in remaining_names:
+                remaining_unique.append(item)
+                remaining_names.add(name)
+            else:
+                duplicates_rest.append(item)
+
+        # 最终排序：前台唯一 -> 其余唯一 -> 所有重复
+        all_chars = top_forward + remaining_unique + duplicates_forward + duplicates_rest
+
         log.debug("按投资金额排序后的角色信息：")
         for item in all_chars:
             log.debug(f"角色 {item['c'].name}: 费用={item['c'].money}, 站位={self.pos_name_localization.get(item['c'].pos, item['c'].pos)}, 区域={self.zone_name_localization[item['zone']]}, 索引={item['idx']}")
@@ -442,7 +470,7 @@ class CurrencyWars:
             name = c.name
 
             # forward
-            if ((c.pos in ("forward", "all") or all_forward_count < min(forward_slots, limit)) and
+            if ((c.pos in ("forward", "all") or len(top_forward) < min(forward_slots, limit)) and
                 len(assigned["forward"]) < forward_slots and
                 used < limit and
                     name not in used_names):
@@ -608,26 +636,26 @@ class CurrencyWars:
 
         self._log_character_status()
 
-        # # 检查前台角色数量，如果为0则从后台和备战席查找角色移动到前台
-        # forward_count = sum(1 for c in self.forward_characters if c.name)
-        # if forward_count == 0:
-        #     log.info("检测到前台角色为0，尝试从后台和备战席查找角色移动到前台")
-        #     # 先在后台查找
-        #     found = False
-        #     for idx, char in enumerate(self.backward_characters):
-        #         if char.name:
-        #             log.info(f"从后台找到角色 {char.name}，移动到前台索引0")
-        #             if self.move_character(("backward", idx), ("forward", 0)):
-        #                 found = True
-        #                 break
+        # 检查前台角色数量，如果为0则从后台和备战席查找角色移动到前台
+        forward_count = sum(1 for c in self.forward_characters if c.name)
+        if forward_count == 0:
+            log.info("检测到前台角色为0，尝试从后台和备战席查找角色移动到前台")
+            # 先在后台查找
+            found = False
+            for idx, char in enumerate(self.backward_characters):
+                if char.name:
+                    log.info(f"从后台找到角色 {char.name}，移动到前台索引0")
+                    if self.move_character(("backward", idx), ("forward", 0)):
+                        found = True
+                        break
 
-        #     # 如果后台没找到，再在备战席查找
-        #     if not found:
-        #         for idx, char in enumerate(self.prepare_characters):
-        #             if char.name:
-        #                 log.info(f"从备战席找到角色 {char.name}，移动到前台索引0")
-        #                 if self.move_character(("prepare", idx), ("forward", 0)):
-        #                     break
+            # 如果后台没找到，再在备战席查找
+            if not found:
+                for idx, char in enumerate(self.prepare_characters):
+                    if char.name:
+                        log.info(f"从备战席找到角色 {char.name}，移动到前台索引0")
+                        if self.move_character(("prepare", idx), ("forward", 0)):
+                            break
 
         log.info("角色移动操作完成")
 
@@ -709,10 +737,22 @@ class CurrencyWars:
                 time.sleep(0.5)
             elif "命运卜者" in result:
                 log.info("检测到命运卜者")
-                # 命运卜者默认会选中一个选项
-                # char_crop = (850.0 / 1920, 167.0 / 1080, 395.0 / 1920, 249.0 / 1080)
-                # auto.click_element(char_crop, "crop")
-                # time.sleep(0.5)
+                char_crop = (850.0 / 1920, 167.0 / 1080, 395.0 / 1920, 249.0 / 1080)
+                auto.click_element(char_crop, "crop")
+                time.sleep(0.5)
+                char_crop_pos = [
+                    (800.0 / 1920, 372.0 / 1080, 25.0 / 1920, 36.0 / 1080),
+                    (1208.0 / 1920, 371.0 / 1080, 25.0 / 1920, 36.0 / 1080),
+                    (1617.0 / 1920, 373.0 / 1080, 24.0 / 1920, 35.0 / 1080)
+                ]
+                for pos in char_crop_pos:
+                    result = auto.get_single_line_text(crop=pos)
+                    if result:
+                        # 优先选择0费
+                        if result.isdigit() and int(result) == 0:
+                            auto.click_element(pos, "crop")
+                            time.sleep(0.5)
+                            break
                 auto.click_element("确认选择", "text", crop=(1329.0 / 1920, 572.0 / 1080, 332.0 / 1920, 55.0 / 1080))
                 time.sleep(0.5)
 
@@ -986,7 +1026,8 @@ class CurrencyWars:
         """
         点击屏幕原点以取消所有选中状态
         """
-        auto.click_element_with_pos(((0, 0), (0, 0)))
+        pos = (6.0 / 1920, 5.0 / 1080, 12.0 / 1920, 14.0 / 1080)
+        auto.click_element_with_pos(auto.find_element(pos, "crop"))
         time.sleep(0.2)
 
     def check_auto_battle(self):
@@ -1054,9 +1095,14 @@ class CurrencyWars:
             log.info(f"检测到{auto.matched_text}界面，尝试选择")
             time.sleep(2)
             button_positions = [
-                (202.0 / 1920, 195.0 / 1080, 470.0 / 1920, 672.0 / 1080),
                 (725.0 / 1920, 196.0 / 1080, 468.0 / 1920, 670.0 / 1080),
+                (202.0 / 1920, 195.0 / 1080, 470.0 / 1920, 672.0 / 1080),
                 (1247.0 / 1920, 198.0 / 1080, 465.0 / 1920, 668.0 / 1080),
+            ]
+            button_positions_click = [
+                (765.0 / 1920, 201.0 / 1080, 394.0 / 1920, 271.0 / 1080),
+                (267.0 / 1920, 200.0 / 1080, 384.0 / 1920, 269.0 / 1080),
+                (1268.0 / 1920, 204.0 / 1080, 387.0 / 1920, 265.0 / 1080),
             ]
             has_choose = False
 
@@ -1084,7 +1130,7 @@ class CurrencyWars:
                     if auto.find_element(('深井角斗场', '佩佩客串', '钻石商人', '现金为王', '降本增效', '大裁员', '人力重组', '节省工位'), 'text', crop=pos, include=True):
                         log.debug(f"跳过{auto.matched_text}选项")
                         continue
-                    auto.click_element(pos, 'crop')
+                    auto.click_element(button_positions_click[button_positions.index(pos)], 'crop')
                     has_choose = True
                     log.info(f"未检测到图鉴未收集选项，选择第{button_positions.index(pos) + 1}个按钮")
                     break
@@ -1092,7 +1138,7 @@ class CurrencyWars:
 
             if not has_choose:
                 log.error("所有选项均不可选，尝试退出")
-                auto.click_element(button_positions[0], 'crop')
+                auto.click_element(button_positions_click[0], 'crop')
                 self.need_exit = True
             time.sleep(1)
             auto.click_element('确认', 'text', None, 10, crop=(738.0 / 1920, 927.0 / 1080, 457.0 / 1920, 123.0 / 1080), include=True)
@@ -1126,7 +1172,13 @@ class CurrencyWars:
                 (971.0 / 1920, 293.0 / 1080, 333.0 / 1920, 488.0 / 1080),
                 (1325.0 / 1920, 291.0 / 1080, 333.0 / 1920, 490.0 / 1080),
             ]
-            auto.click_element(button_positions[0], 'crop', None, 10)
+            button_positions_click = [
+                (297.0 / 1920, 349.0 / 1080, 130.0 / 1920, 241.0 / 1080),
+                (651.0 / 1920, 349.0 / 1080, 130.0 / 1920, 242.0 / 1080),
+                (1007.0 / 1920, 347.0 / 1080, 130.0 / 1920, 246.0 / 1080),
+                (1362.0 / 1920, 346.0 / 1080, 130.0 / 1920, 247.0 / 1080),
+            ]
+            auto.click_element(button_positions_click[0], 'crop', None, 10)
             log.info("默认选择第一个补给选项")
             time.sleep(1)
             auto.click_element('确认', 'text', None, 10, crop=(1490.0 / 1920, 943.0 / 1080, 403.0 / 1920, 76.0 / 1080), include=True)
