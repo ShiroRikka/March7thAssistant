@@ -55,6 +55,11 @@ browser_persistent_enable: True # 是否允许浏览器保存数据（登录状�
 browser_scale_factor: 1.0 # 浏览器的缩放比，如果云游戏画面过小/过大，可调整这个选项
 browser_launch_argument: [] # 浏览器启动的额外参数，如 "--auto-open-devtools-for-tabs"
 browser_debug_port: 9222 # 浏览器 Debug 端口，应确保该端口不被占用
+browser_download_use_mirror: True # 是否使用镜像下载浏览器和驱动
+browser_mirror_urls:
+  chrome: https://registry.npmmirror.com/-/binary/chrome-for-testing/
+  chromedriver: https://registry.npmmirror.com/-/binary/chrome-for-testing/
+  edgedriver: https://registry.npmmirror.com/-/binary/edgedriver/
 
 # 副本设置
 instance_type: 拟造花萼（金） # 设置副本类型，可选值：拟造花萼（金）、拟造花萼（赤）、凝滞虚影、侵蚀隧洞、饰品提取。
@@ -93,6 +98,10 @@ merge_immersifier_limit: "12" # 沉浸器上限。
 # 开拓力使用设置
 use_reserved_trailblaze_power: False # 是否使用后备开拓力。true 使用，false 不使用。
 use_fuel: False # 是否使用燃料。true 使用，false 不使用。
+
+# 体力计划设置
+# 体力计划列表，每项包含副本类型、副本名称和剩余次数，例如：[["拟造花萼（金）", "回忆之蕾", 10], ["侵蚀隧洞", "睿治之径", 5]]
+power_plan: []
 
 # 历战余响设置
 echo_of_war_enable: false # 是否体力优先完成3次「历战余响」。true 开启，false 关闭。
