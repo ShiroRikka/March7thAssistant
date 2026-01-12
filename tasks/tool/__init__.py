@@ -5,14 +5,14 @@ from .autoplot import AutoPlot
 from module.game import get_game_controller
 from module.automation.screenshot import Screenshot
 from module.logger import log
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 import threading
 import time
 
 
 class ScreenshotSignals(QObject):
     """用于线程间通信的信号"""
-    show_window = pyqtSignal(object)  # 传递截图数据
+    show_window = Signal(object)  # 传递截图数据
 
 
 class ToolManager:
@@ -38,11 +38,12 @@ class ToolManager:
         """捕获图像"""
         try:
             log.info("开始捕获图像...")
-            game = get_game_controller()
-            if not game.switch_to_game():
-                log.error("游戏尚未启动")
-                return False
-            time.sleep(0.5)  # 等待窗口切换
+            if not cfg.cloud_game_enable:
+                game = get_game_controller()
+                if not game.switch_to_game():
+                    log.error("游戏尚未启动")
+                    return False
+                time.sleep(0.5)  # 等待窗口切换
 
             log.info("开始截图...")
             result = Screenshot.take_screenshot(cfg.game_title_name)
@@ -130,7 +131,7 @@ def start(tool: Literal["screenshot", "plot"]):
         capture_thread = threading.Thread(target=capture_and_show, daemon=True)
         capture_thread.start()
     elif tool == "plot":
-        # 直接主线程调用 PyQt5 窗口
+        # 直接主线程调用窗口
         _tool_manager.run_plot()
 
 
