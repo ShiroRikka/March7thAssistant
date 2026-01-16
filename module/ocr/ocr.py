@@ -23,6 +23,8 @@ class OCR:
         self._use_dml = None  # None 表示未初始化，True/False 表示是否使用 DML
         self._dml_fallback = False  # 是否已降级到 CPU 模式
         self._cfg = None  # 配置对象引用，延迟获取避免循环导入
+        self.ocr_time = 0.0
+        self.ocr_count = 0
 
     def _get_config(self):
         """延迟获取配置对象，避免循环导入"""
@@ -81,6 +83,7 @@ class OCR:
         if self.ocr is None:
             try:
                 self.logger.debug("开始初始化OCR...")
+                start_time = time.monotonic()
                 if force_cpu:
                     use_dml = False
                     self._dml_fallback = True
@@ -115,9 +118,14 @@ class OCR:
                         "Det.engine_type": EngineType.ONNXRUNTIME,
                         "Cls.engine_type": EngineType.ONNXRUNTIME,
                         "Rec.engine_type": EngineType.ONNXRUNTIME,
+                        # "Det.engine_type": EngineType.OPENVINO,
+                        # "Cls.engine_type": EngineType.OPENVINO,
+                        # "Rec.engine_type": EngineType.OPENVINO,
                     }
                 )
                 self.logger.debug("初始化OCR完成")
+                elapsed_time = time.monotonic() - start_time
+                self.logger.debug(f"OCR初始化耗时: {elapsed_time:.2f} 秒")
                 atexit.register(self.exit_ocr)
             except Exception as e:
                 self.logger.error(f"初始化OCR失败：{e}")
@@ -133,24 +141,36 @@ class OCR:
             except Exception as e:
                 self.logger.error(f"清理OCR资源失败：{e}")
 
+            if self.ocr_count > 0:
+                avg_time = self.ocr_time / self.ocr_count
+                self.logger.debug(f"共执行 {self.ocr_count} 次 OCR，平均用时 {avg_time:.2f} 秒")
+                self.ocr_time = 0.0
+                self.ocr_count = 0
+
     def convert_format(self, result):
         """转换OCR结果格式，返回统一的数据格式"""
         if result is None:
             return False
         return [[item['box'], (item['txt'], item['score'])] for item in result]
 
-    def run(self, image, max_retries=3):
+    def run(self, img, max_retries=3):
         """执行OCR识别，支持Image对象、文件路径和np.ndarray对象"""
         self.instance_ocr()
         try:
-            if not isinstance(image, Image.Image):
-                if isinstance(image, str):
-                    image = Image.open(os.path.abspath(image))
-                else:  # 默认为 np.ndarray，避免需要import numpy
-                    image = Image.fromarray(image)
-            image_stream = io.BytesIO()
-            image.save(image_stream, format="PNG")
-            image_bytes = image_stream.getvalue()
+            # start_time = time.monotonic()
+            if not isinstance(img, Image.Image):
+                if isinstance(img, str):
+                    img = Image.open(os.path.abspath(img))
+                # else:  # 默认为 np.ndarray，避免需要import numpy
+                #     image = Image.fromarray(image)
+            # elapsed_time = time.monotonic() - start_time
+            # self.logger.debug(f"图像预处理耗时: {elapsed_time:.2f} 秒")
+
+            # image_stream = io.BytesIO()
+            # image.save(image_stream, format="PNG")
+            # image_bytes = image_stream.getvalue()
+            # elapsed_time = time.monotonic() - start_time
+            # self.logger.debug(f"图像转换为字节流耗时: {elapsed_time:.2f} 秒")
 
             # 重试机制，处理 DML 偶发的 UnicodeDecodeError
             # 注意：UnicodeDecodeError 会被 rapidocr 包装成 ONNXRuntimeError，需要检查异常链
@@ -159,8 +179,11 @@ class OCR:
                 try:
                     # 记录开始时间，用于检测 DML 是否过慢
                     start_time = time.monotonic()
-                    original_dict = self.ocr(image_bytes).to_json()
+                    original_dict = self.ocr(img).to_json()
                     elapsed_time = time.monotonic() - start_time
+                    # self.logger.debug(f"OCR执行耗时: {elapsed_time:.2f} 秒")
+                    self.ocr_time += elapsed_time
+                    self.ocr_count += 1
 
                     # 检测 DML 是否过慢，若超过阈值则自动降级
                     if self._use_dml and not self._dml_fallback and elapsed_time > OCR_SLOW_THRESHOLD:
@@ -169,7 +192,7 @@ class OCR:
                         self.exit_ocr()
                         self.instance_ocr(force_cpu=True)
                         # 用 CPU 模式重新执行一次
-                        original_dict = self.ocr(image_bytes).to_json()
+                        original_dict = self.ocr(img).to_json()
                         self.logger.info("已切换到 CPU 模式")
 
                     return self.replace_strings(original_dict)
@@ -187,7 +210,7 @@ class OCR:
                             self.exit_ocr()
                             self.instance_ocr(force_cpu=True)
                             try:
-                                original_dict = self.ocr(image_bytes).to_json()
+                                original_dict = self.ocr(img).to_json()
                                 self.logger.info("CPU 模式执行成功")
                                 return self.replace_strings(original_dict)
                             except Exception as cpu_e:
@@ -202,7 +225,7 @@ class OCR:
                 self.exit_ocr()
                 self.instance_ocr(force_cpu=True)
                 try:
-                    original_dict = self.ocr(image_bytes).to_json()
+                    original_dict = self.ocr(img).to_json()
                     self.logger.info("CPU 模式执行成功")
                     return self.replace_strings(original_dict)
                 except Exception as e:
