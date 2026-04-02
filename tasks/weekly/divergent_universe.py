@@ -214,9 +214,14 @@ class DivergentUniverse:
         if stage_match:
             current, total, plane, station = stage_match.groups()
             station = station.strip() if station else "未知"
-            # 修复OCR错误
-            if station == "财":
-                station = "财富"
+
+            if station and len(station) == 1:
+                keywords = ["战斗", "精英", "事件", "异常", "奖励", "财富", "冒险", "商店", "铸造", "空白", "首领", "休整", "转化"]
+                for keyword in keywords:
+                    if station in keyword:
+                        station = keyword
+                        break
+
             new_stage = f"{current}/{total}|第{plane}位面|{station}"
             if new_stage != self.current_stage:
                 self.current_stage = new_stage
@@ -227,7 +232,7 @@ class DivergentUniverse:
                     auto.press_mouse()
                     time.sleep(2)
                     for _ in range(30):
-                        if self.check_click_close():
+                        if self.check_click_close() or self.check_title():
                             time.sleep(2)
                         else:
                             break
@@ -260,12 +265,12 @@ class DivergentUniverse:
             if not cfg.cloud_game_enable and not cfg.weekly_divergent_stable_mode:
                 auto.press_key_up("shift")
 
-            if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("贵重战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080)):
-                log.info("检测到贵重战利品，尝试点击")
+            if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080), include=True):
+                log.info("检测到战利品，尝试点击")
                 auto.press_key("f")
                 time.sleep(2)
                 for _ in range(30):
-                    if self.check_click_close():
+                    if self.check_click_close() or self.check_title():
                         time.sleep(2)
                     else:
                         break
@@ -274,13 +279,27 @@ class DivergentUniverse:
 
             for _ in range(5):
                 auto.press_mouse()
-                time.sleep(1)
-            time.sleep(2)
+                time.sleep(0.5)
+            for _ in range(30):
+                if self.check_click_close() or self.check_title():
+                    time.sleep(2)
+                else:
+                    break
 
             # 进入战斗失败，尝试重新进入
             if auto.find_element("./assets/images/screen/divergent_universe/stage.png", "image", 0.9):
-                self.process_re_enter()
-                continue
+                auto.press_key("s")
+                for _ in range(5):
+                    auto.press_mouse()
+                    time.sleep(0.5)
+                for _ in range(30):
+                    if self.check_click_close() or self.check_title():
+                        time.sleep(2)
+                    else:
+                        break
+                if auto.find_element("./assets/images/screen/divergent_universe/stage.png", "image", 0.9):
+                    self.process_re_enter()
+                    continue
             else:
                 self.process_stage = True
                 return
@@ -291,12 +310,12 @@ class DivergentUniverse:
         time.sleep(2)
         self.process_stage = False
 
-        if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("贵重战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080)):
-            log.info("检测到贵重战利品，尝试点击")
+        if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080), include=True):
+            log.info("检测到战利品，尝试点击")
             auto.press_key("f")
             time.sleep(2)
             for _ in range(30):
-                if self.check_click_close():
+                if self.check_click_close() or self.check_title():
                     time.sleep(2)
                 else:
                     break
@@ -304,12 +323,12 @@ class DivergentUniverse:
         if self.process_random_door():
             return
 
-        if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("贵重战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080)):
-            log.info("检测到贵重战利品，尝试点击")
+        if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element("战利品", "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080), include=True):
+            log.info("检测到战利品，尝试点击")
             auto.press_key("f")
             time.sleep(2)
             for _ in range(30):
-                if self.check_click_close():
+                if self.check_click_close() or self.check_title():
                     time.sleep(2)
                 else:
                     break
@@ -320,7 +339,7 @@ class DivergentUniverse:
         auto.press_mouse()
         time.sleep(2)
         for _ in range(30):
-            if self.check_click_close():
+            if self.check_click_close() or self.check_title():
                 time.sleep(2)
             else:
                 break
@@ -337,11 +356,12 @@ class DivergentUniverse:
         auto.press_mouse()
         time.sleep(2)
         for _ in range(30):
-            if self.check_click_close():
+            if self.check_click_close() or self.check_title():
                 time.sleep(2)
             else:
                 break
         self.process_re_enter()
+        auto.press_key("w", 2)
         if self.process_random_door():
             return
 
@@ -349,18 +369,19 @@ class DivergentUniverse:
         time.sleep(0.2)
         auto.press_key("w", 1)
         time.sleep(0.2)
-        auto.press_key("d", 0.5)
+        auto.press_key("a", 0.5)
         if self.process_random_door():
             return
 
         auto.press_mouse()
         time.sleep(2)
         for _ in range(30):
-            if self.check_click_close():
+            if self.check_click_close() or self.check_title():
                 time.sleep(2)
             else:
                 break
         self.process_re_enter()
+        auto.press_key("w", 2)
         if self.process_random_door(stable_mode=True):
             return
 
@@ -374,7 +395,7 @@ class DivergentUniverse:
         time.sleep(0.2)
         auto.press_key("w", 1)
         time.sleep(0.2)
-        auto.press_key("d", 0.5)
+        auto.press_key("a", 0.5)
         if self.process_random_door(stable_mode=True):
             return
 
@@ -461,8 +482,8 @@ class DivergentUniverse:
 
         if not stable_mode:
             auto.press_key_down("w")
-        else:
-            auto.press_key("w", 1.5)
+        # else:
+        #     auto.press_key("w", 1.5)
 
         timeout = 15
         if stable_mode:
@@ -473,9 +494,6 @@ class DivergentUniverse:
             # time.sleep(1)
             while time.monotonic() - start_time < timeout:
                 # time.sleep(0.1)
-
-                if stable_mode:
-                    auto.press_key("w")
 
                 # 检测F交互图标
                 if auto.find_element("./assets/images/screen/divergent_universe/f.png", "image", 0.9, crop=f_crop):
@@ -515,6 +533,9 @@ class DivergentUniverse:
                     auto.press_key(adjust_key, wait_time=0.15)
                     if stable_mode:
                         auto.press_key_up("w")
+                else:
+                    if stable_mode:
+                        auto.press_key("w")
         finally:
             auto.press_key_up("w")
         return False
@@ -771,7 +792,7 @@ class DivergentUniverse:
                     station_priorities.append(priority_map.get(tag, 7))  # 其他标签优先级同为 7
 
             if not has_priority_station:
-                if not auto.find_element("重抽0", "text", crop=re_extract_crop):
+                if not auto.find_element("重抽0", "text", crop=re_extract_crop) and not auto.find_element("0", "text", crop=re_extract_crop):
                     auto.click_element(re_extract_crop, 'crop')
                     time.sleep(0.5)
                     if auto.find_element("当前无法重抽", "text", crop=(880 / 1920, 282 / 1080, 157 / 1920, 38 / 1080)):
