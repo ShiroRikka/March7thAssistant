@@ -124,7 +124,7 @@ class DivergentUniverse:
             log.info("选择周期演算")
             screen.change_to("divergent_mode_select_cycle")
 
-        if not self.choose_level(int(cfg.weekly_divergent_level)):
+        if not self.choose_level(int(cfg.weekly_divergent_level), type):
             log.error("选择关卡失败，结束任务")
             return False
 
@@ -138,7 +138,7 @@ class DivergentUniverse:
         log.info("开始对局")
         return True
 
-    def choose_level(self, level: int) -> bool:
+    def choose_level(self, level: int, type: Literal["normal", "cycle"] = "normal") -> bool:
         """
         选择关卡难度
         """
@@ -155,6 +155,13 @@ class DivergentUniverse:
         if auto.click_element(level_positions[level - 1], 'crop'):
             log.info(f"已选择难度 {level} 的关卡")
             time.sleep(1)
+            if type == "cycle":
+                for _ in range(10):
+                    if auto.find_element("阈值协议", "text", crop=(1616 / 1920, 822 / 1080, 92 / 1920, 32 / 1080)):
+                        auto.click_element((1492 / 1920, 868 / 1080, 75 / 1920, 39 / 1080), "crop")
+                        time.sleep(1)
+                    else:
+                        break
             return True
 
         return False
@@ -205,28 +212,66 @@ class DivergentUniverse:
         if not stage_text:
             return
 
+        stage_pattern = r"[（(]\s*(\d+)\s*/\s*(13|17|20)\s*[)）]\s*第\s*([一二三])\s*位面(?:\s*[-—－]\s*(.+))?"
+        keywords = ["战斗", "精英", "事件", "异常", "奖励", "财富", "冒险", "商店", "铸造", "空白", "首领", "休整", "转化"]
+
+        def normalize_station(raw_station):
+            station_name = raw_station.strip() if raw_station else "未知"
+            if station_name and station_name not in keywords:
+                for keyword in keywords:
+                    if any(char in keyword for char in station_name):
+                        return keyword
+            return station_name
+
+        def parse_stage_info(stage_value):
+            if not stage_value:
+                return None
+            stage_info_match = re.match(r"^(\d+)/(\d+)\|第([一二三])位面\|(.+)$", stage_value)
+            if not stage_info_match:
+                return None
+            return stage_info_match.groups()
+
         # 示例："（1/13）第一位面-战斗"
         stage_match = re.search(
             # r"[（(]\s*(\d+)\s*/\s*(13)\s*[)）]\s*第\s*([^位\s]+)\s*位面(?:\s*[-—－]\s*(.+))?",
-            r"[（(]\s*(\d+)\s*/\s*(13)\s*[)）]\s*第\s*([一二三])\s*位面(?:\s*[-—－]\s*(.+))?",
+            stage_pattern,
             stage_text
         )
         if stage_match:
             current, total, plane, station = stage_match.groups()
-            station = station.strip() if station else "未知"
+            station = normalize_station(station)
 
-            if station and len(station) == 1:
-                keywords = ["战斗", "精英", "事件", "异常", "奖励", "财富", "冒险", "商店", "铸造", "空白", "首领", "休整", "转化"]
-                for keyword in keywords:
-                    if station in keyword:
-                        station = keyword
-                        break
+            if station == "未知":
+                previous_stage_info = parse_stage_info(self.current_stage)
+                if previous_stage_info:
+                    prev_current, prev_total, prev_plane, prev_station = previous_stage_info
+                    if (current, total, plane) == (prev_current, prev_total, prev_plane):
+                        station = prev_station
+                        log.debug(f"区域识别为未知且关卡未变化，沿用上一阶段区域：{station}")
+
+                if station == "未知":
+                    for retry in range(3):
+                        time.sleep(1)
+                        retry_stage_text = auto.get_single_line_text(crop=stage_crop)
+                        if not retry_stage_text:
+                            continue
+
+                        retry_stage_match = re.search(stage_pattern, retry_stage_text)
+                        if not retry_stage_match:
+                            continue
+
+                        _, _, _, retry_station = retry_stage_match.groups()
+                        retry_station = normalize_station(retry_station)
+                        if retry_station != "未知":
+                            station = retry_station
+                            log.debug(f"区域识别重试成功（第 {retry + 1} 次）：{station}")
+                            break
 
             new_stage = f"{current}/{total}|第{plane}位面|{station}"
             if new_stage != self.current_stage:
                 self.current_stage = new_stage
                 log.hr(f"当前阶段 {current}/{total}，第{plane}位面，区域：{station}", 2)
-                if "首领" in station or "战斗" in station or "精英" in station:
+                if "首领" in station or "战斗" in station or "精英" in station or "转化" in station:
                     self.process_battle_stage()
                 elif "空白" in station or "休整" in station or "商店" in station or "财富" in station:
                     auto.press_mouse()
@@ -242,7 +287,7 @@ class DivergentUniverse:
                     log.info("检测到暂不支持的区域类型")
                     self.process_leave()
             elif self.process_stage:
-                if "首领" in station or "战斗" in station or "精英" in station:
+                if "首领" in station or "战斗" in station or "精英" in station or "转化" in station:
                     self.process_battle_stage_finish()
             return
 
@@ -589,6 +634,7 @@ class DivergentUniverse:
                         return
                 log.info("默认选择中间的面具")
                 auto.click_element(mask_positions[1], 'crop')
+                time.sleep(2)
 
     def process_equation(self):
         """
@@ -771,12 +817,13 @@ class DivergentUniverse:
             # 根据优先级选择点击哪个站点，若优先级相同，点击中间的站点
             priority_map = {
                 "首领": 0,
+                "转化": 0,
                 "战斗": 1,
-                "精英": 2,
+                "精英": 1,
+                "休整": 2,
                 "空白": 3,
-                "休整": 4,
-                "商店": 5,
-                "财富": 6,
+                "商店": 3,
+                "财富": 4,
                 # "异常": 7,
                 # "事件": 8,
             }
@@ -877,7 +924,7 @@ class DivergentUniverse:
         """
         检查并点击 “点击空白处关闭” 的按钮
         """
-        if auto.click_element("点击空白处关闭", 'text', None, crop=(820 / 1920, 831 / 1080, 277 / 1920, 245 / 1080), include=True):
+        if auto.click_element("点击空白处关闭", 'text', None, crop=(818 / 1920, 797 / 1080, 281 / 1920, 281 / 1080), include=True):
             log.info(f"检测到 “点击空白处关闭” 的按钮，尝试点击")
             return True
         return False
@@ -886,7 +933,7 @@ class DivergentUniverse:
         """
         检查并点击 “终止战斗并结算” 和 “返回主界面” 的按钮
         """
-        if result := auto.find_element(("终止战斗并结算", "返回主界面"), 'text', None, crop=(574 / 1920, 949 / 1080, 790 / 1920, 59 / 1080), include=True):
+        if result := auto.find_element(("终止战斗并结算", "返回主界面", "确认结算"), 'text', None, crop=(573 / 1920, 947 / 1080, 792 / 1920, 85 / 1080), include=True):
 
             if auto.matched_text == "终止战斗并结算":
                 log.info(f"检测到 “终止战斗并结算” 的按钮，尝试点击")
@@ -899,12 +946,17 @@ class DivergentUniverse:
             elif auto.matched_text == "返回主界面":
                 log.info(f"检测到 “返回主界面” 的按钮，尝试点击")
                 self._check_battle_result()
+                time.sleep(2)
                 auto.click_element_with_pos(result)
                 if self.result is not None:
                     log.info(f"本次对局结果：{'成功' if self.result else '失败'}")
                 else:
                     log.info("本次对局结果：未知")
                 self.end_loop = True
+
+            elif auto.matched_text == "确认结算":
+                log.info(f"检测到 “确认结算” 的按钮，尝试点击")
+                auto.click_element_with_pos(result)
 
         return False
 
