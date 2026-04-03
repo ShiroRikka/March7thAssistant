@@ -21,6 +21,7 @@ class DivergentUniverse:
         self.current_stage: str = ""  # 当前关卡阶段
         self.process_stage: bool = False  # 是否正在处理关卡中
         self.end_loop: bool = False  # 是否结束主循环
+        self.stage_finish: bool = False  # 是否完成当前阶段
 
     def start(self):
         log.hr('准备差分宇宙', '0')
@@ -175,6 +176,7 @@ class DivergentUniverse:
         self.current_stage = ""  # 重置当前关卡阶段
         self.process_stage = False  # 重置关卡处理状态
         self.end_loop = False  # 重置结束循环标志
+        self.stage_finish = False  # 重置阶段完成标志
 
         start_time = time.monotonic()
         timeout = 60 * 120  # 120分钟超时
@@ -269,6 +271,7 @@ class DivergentUniverse:
 
             new_stage = f"{current}/{total}|第{plane}位面|{station}"
             if new_stage != self.current_stage:
+                self.stage_finish = False
                 self.current_stage = new_stage
                 log.hr(f"当前阶段 {current}/{total}，第{plane}位面，区域：{station}", 2)
                 if "首领" in station or "战斗" in station or "精英" in station or "转化" in station:
@@ -286,6 +289,13 @@ class DivergentUniverse:
                 else:
                     log.info("检测到暂不支持的区域类型")
                     self.process_leave()
+
+            elif self.stage_finish:
+                # 选中特定 “惊世奇迹” 例如 “财猫面具·破” 以后，存在 bug，虽然不计算区域进度，但是左上角的区域类型不会变化
+                # 此时只需要暂离，重新进入，左上角就会显示正确的区域类型
+                log.info("发现阶段完成但区域未变化，可能存在区域类型显示错误")
+                self.process_re_enter()
+
             elif self.process_stage:
                 if "首领" in station or "战斗" in station or "精英" in station or "转化" in station:
                     self.process_battle_stage_finish()
@@ -451,6 +461,8 @@ class DivergentUniverse:
         auto.press_key("esc")
         if auto.click_element("结束并结算", "text", max_retries=10, crop=(1238 / 1920, 859 / 1080, 562 / 1920, 165 / 1080)):
             auto.click_element("./assets/images/zh_CN/base/confirm.png", "image", 0.9, max_retries=10)
+        else:
+            self.stage_finish = True
 
     def process_re_enter(self):
         log.info("尝试重新进入当前关卡")
@@ -555,6 +567,7 @@ class DivergentUniverse:
                         time.sleep(2)
                         if auto.find_element("./assets/images/screen/divergent_universe/stage.png", "image", 0.9):
                             return False
+                        self.stage_finish = True
                         return True
                     else:
                         if not stable_mode:
@@ -954,9 +967,17 @@ class DivergentUniverse:
                     log.info("本次对局结果：未知")
                 self.end_loop = True
 
+                # 由于部分用户有时点击返回主界面后界面会卡在结算界面，无法继续点击返回主界面，因此增加一个循环持续点击返回主界面
+                for _ in range(30):
+                    if auto.click_element("返回主界面", 'text', None, crop=(573 / 1920, 947 / 1080, 792 / 1920, 85 / 1080), include=True):
+                        time.sleep(2)
+                    else:
+                        break
+
             elif auto.matched_text == "确认结算":
                 log.info(f"检测到 “确认结算” 的按钮，尝试点击")
                 auto.click_element_with_pos(result)
+                return True
 
         return False
 
