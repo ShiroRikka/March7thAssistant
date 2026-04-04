@@ -491,7 +491,9 @@ class DivergentUniverse:
         # return auto.find_element((LOWER, UPPER), "hsv", crop=crop)
         LOWER = np.array([129, 57, 143])
         UPPER = np.array([174, 163, 229])
-        return auto.find_element((LOWER, UPPER), "hsv")
+        remove_crop = (1494 / 1920, 0 / 1080, 424 / 1920, 268 / 1080)
+        auto.fill_crop_with_color(remove_crop, (0, 0, 0))
+        return auto.find_element((LOWER, UPPER), "hsv", take_screenshot=False)
 
     def process_random_door(self, stable_mode=False):
         if cfg.cloud_game_enable or cfg.weekly_divergent_stable_mode:
@@ -970,12 +972,9 @@ class DivergentUniverse:
                     log.info("本次对局结果：未知")
                 self.end_loop = True
 
-                # 由于部分用户有时点击返回主界面后界面会卡在结算界面，无法继续点击返回主界面，因此增加一个循环持续点击返回主界面
-                for _ in range(30):
-                    if auto.click_element("返回主界面", 'text', None, crop=(573 / 1920, 947 / 1080, 792 / 1920, 85 / 1080), include=True):
-                        time.sleep(2)
-                    else:
-                        break
+                # 没有存档会显示一个弹窗，需要点击确认
+                time.sleep(2)
+                auto.click_element("./assets/images/zh_CN/base/confirm.png", "image", 0.9)
 
             elif auto.matched_text == "确认结算":
                 log.info(f"检测到 “确认结算” 的按钮，尝试点击")
