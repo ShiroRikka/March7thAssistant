@@ -354,7 +354,7 @@ class DivergentUniverse:
         return auto.find_element(
             target={"model_path": "./assets/model/divergent.onnx", "names": ["door", "event"], "target_class": "event"},
             find_type="yolo_with_multiple_targets",
-            threshold=0.01
+            threshold=0.1
         )
 
     def find_closest_event(self, events, screen_center_x):
@@ -512,6 +512,16 @@ class DivergentUniverse:
                     self.process_leave()
                     return
                 log.info(f"事件超时（第 {timeout_retries}/3 次），重新进入关卡重试")
+
+                if auto.find_element("./assets/images/share/base/F.png", "image", 0.9, crop=(998.0 / 1920, 473.0 / 1080, 392.0 / 1920, 296.0 / 1080)) and auto.find_element(("战利品", "混沌药箱"), "text", crop=(1205 / 1920, 589 / 1080, 193 / 1920, 49 / 1080), include=True):
+                    log.info(f"检测到{auto.matched_text}，尝试点击")
+                    auto.press_key("f")
+                    time.sleep(2)
+                    for _ in range(100):
+                        if self.check_click_close() or self.check_title():
+                            time.sleep(2)
+                        else:
+                            break
 
                 time.sleep(1)
                 auto.press_mouse()
@@ -992,6 +1002,10 @@ class DivergentUniverse:
             (757 / 1920, 242 / 1080, 410 / 1920, 610 / 1080),
             (1235 / 1920, 242 / 1080, 410 / 1920, 610 / 1080),
         ]
+        relic2_positions = [
+            (517 / 1920, 242 / 1080, 409 / 1920, 610 / 1080),
+            (997 / 1920, 241 / 1080, 405 / 1920, 609 / 1080)
+        ]
 
         time.sleep(2)
         has_choose = False
@@ -1004,6 +1018,7 @@ class DivergentUniverse:
 
         if not has_choose:
             log.info("未检测到优先可选项，默认选择中间的奇物")
+            auto.click_element(relic2_positions[0], 'crop')
             auto.click_element(relic_positions[1], 'crop')
             has_choose = True
 
@@ -1020,8 +1035,13 @@ class DivergentUniverse:
             (757 / 1920, 242 / 1080, 410 / 1920, 610 / 1080),
             (1235 / 1920, 242 / 1080, 410 / 1920, 610 / 1080),
         ]
+        relic2_positions = [
+            (517 / 1920, 242 / 1080, 409 / 1920, 610 / 1080),
+            (997 / 1920, 241 / 1080, 405 / 1920, 609 / 1080)
+        ]
 
         log.info("尝试丢弃中间的奇物")
+        auto.click_element(relic2_positions[0], 'crop')
         auto.click_element(relic_positions[1], 'crop')
         time.sleep(1)
         auto.click_element('丢弃', 'text', None, 10, crop=(1695 / 1920, 948 / 1080, 69 / 1920, 50 / 1080), include=True)
