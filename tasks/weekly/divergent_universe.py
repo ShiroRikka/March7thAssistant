@@ -54,11 +54,12 @@ class DivergentUniverse:
             return False
 
         score_parts = score.split('/')
-        if len(score_parts) == 2 and score_parts[0].isdigit() and score_parts[1].isdigit() and score_parts[1] == "14000":
-            log.info(f"差分宇宙积分：{score_parts[0]} / {score_parts[1]}")
-            if score_parts[0] == "14000":
+        if len(score_parts) == 2 and score_parts[0].isdigit() and score_parts[1].isdigit() and score_parts[1] in ("12000", "14000"):
+            max_score = score_parts[1]
+            log.info(f"差分宇宙积分：{score_parts[0]} / {max_score}")
+            if score_parts[0] == max_score:
                 cfg.save_timestamp("weekly_divergent_timestamp")
-                log.info("已达到最高积分 14000，记录时间")
+                log.info(f"已达到最高积分 {max_score}，记录时间")
                 return True
         else:
             log.warning(f"无法解析差分宇宙积分: {score}")
@@ -354,7 +355,7 @@ class DivergentUniverse:
         return auto.find_element(
             target={"model_path": "./assets/model/divergent.onnx", "names": ["door", "event"], "target_class": "event"},
             find_type="yolo_with_multiple_targets",
-            threshold=0.1
+            threshold=0.2
         )
 
     def find_closest_event(self, events, screen_center_x):
@@ -387,11 +388,16 @@ class DivergentUniverse:
             log.info(f"事件处理第 {event_count + 1}/5 轮（超时重试 {timeout_retries}/3）")
 
             # 检测所有事件
+            time.sleep(4)
             events = self.detect_events()
             if not events:
-                log.info("未检测到任何事件，事件处理完成")
-                self.process_stage = True
-                return
+                log.info("未检测到任何事件，尝试向前移动后重试")
+                auto.press_key("w", 1)
+                events = self.detect_events()
+                if not events:
+                    log.info("未检测到任何事件，事件处理完成")
+                    self.process_stage = True
+                    return
 
             log.info(f"检测到 {len(events)} 个事件")
 
@@ -463,7 +469,7 @@ class DivergentUniverse:
                             event_start_time = time.monotonic()
                             # for _ in range(100):
                             while time.monotonic() - event_start_time < 30 * 60:  # 最多等待30分钟 应该不会有人战斗能打半小时吧
-                                if self.check_click_close() or self.check_title():
+                                if self.check_click_close() or self.check_title() or self.check_auto_battle():
                                     time.sleep(2)
                                 elif auto.find_element("./assets/images/screen/divergent_universe/stage.png", "image", 0.9, crop=(33 / 1920, 52 / 1080, 68 / 1920, 60 / 1080)):
                                     break
