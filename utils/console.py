@@ -1,15 +1,35 @@
 # coding:utf-8
 import os
+import sys
+
+
+def ensure_utf8_output(streams=None) -> None:
+    """把输出流切换到 UTF-8（无法编码的字符替换掉）。
+
+    Windows 的控制台/管道可能把 stdout 绑定到 cp1252 等本地编码，
+    打印中文警告会直接抛 UnicodeEncodeError（CI 曾因此挂掉）；
+    本地 UTF-8 终端不复现，所以必须在程序入口统一兜底。
+    """
+    if streams is None:
+        streams = (sys.stdout, sys.stderr)
+    for stream in streams:
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def is_gui_started():
     """检查是否从图形界面启动"""
-    return os.environ.get("MARCH7TH_GUI_STARTED", "").lower() == "true"
+    # 宽容写法（与 config.py/build.py 的环境变量布尔解析同一风格）：
+    # 兼容 "true"/"1"，避免写入方与读取方取值习惯不一致导致误判
+    return os.environ.get("MARCH7TH_GUI_STARTED", "").lower() in ("true", "1")
 
 
 def is_docker_started():
     """检查是否从Docker启动"""
-    return os.environ.get("MARCH7TH_DOCKER_STARTED", "").lower() == "true"
+    # 与 is_gui_started() 同风格的宽容写法："true"/"1" 均认可
+    return os.environ.get("MARCH7TH_DOCKER_STARTED", "").lower() in ("true", "1")
 
 
 def should_skip_pause():

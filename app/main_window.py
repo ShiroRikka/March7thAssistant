@@ -51,6 +51,16 @@ class ConfigWatcher(QObject):
         """检测到文件变化，延迟处理避免频繁触发"""
         from PySide6.QtCore import QTimer
 
+        log.debug(f"[config-watch] 文件变化事件: {path}")
+
+        # 配置保存采用临时文件原子替换，替换后旧的监视句柄可能失效，需要重新挂载
+        try:
+            if os.path.exists(self.config_path) and self.config_path not in self.watcher.files():
+                self.watcher.addPath(self.config_path)
+                log.debug("[config-watch] 监视句柄失效，已重新挂载")
+        except Exception:
+            pass
+
         # 清除之前的定时器
         if self.debounce_timer:
             self.debounce_timer.stop()
@@ -64,8 +74,12 @@ class ConfigWatcher(QObject):
 
     def _emit_change(self):
         """检查文件是否真的改变，然后发送信号"""
-        if os.path.exists(self.config_path) and cfg.is_config_changed():
+        exists = os.path.exists(self.config_path)
+        if exists and cfg.is_config_changed():
+            log.info("[config-watch] 检测到配置文件被外部修改，准备重载界面")
             self.config_changed.emit()
+        else:
+            log.debug(f"[config-watch] 无需重载: exists={exists}")
 
 
 class ClickableLabel(QLabel):
@@ -86,6 +100,7 @@ class MainWindow(MSFluentWindow):
         self.startup_task = task  # 保存启动时要执行的任务
         self.exit_on_complete = exit_on_complete  # 任务完成后是否退出
         self.start_minimized_to_tray = start_minimized_to_tray
+        self._defer_startup_checks = False  # 静默启动时推迟的启动检查（检查更新/公告）
         self.detected_update_version = None
         self.updateVersionBadge = None
         qconfig.themeChanged.connect(self._on_theme_changed)
@@ -107,6 +122,9 @@ class MainWindow(MSFluentWindow):
         if self.startup_task:
             from PySide6.QtCore import QTimer
             QTimer.singleShot(1000, self._executeStartupTask)
+        elif self.start_minimized_to_tray:
+            # 最小化到托盘启动：不弹出任何窗口，检查更新与公告推迟到主窗口首次显示
+            self._defer_startup_checks = True
         else:
             # 检查更新
             checkUpdate(self, flag=True)
@@ -182,13 +200,24 @@ class MainWindow(MSFluentWindow):
         else:
             self.move(w // 2 - self.width() // 2, h // 2 - self.height() // 2)
 
+        # 记录期望的窗口几何（尺寸与位置）
+        target_geometry = self.geometry()
+
         # 根据配置决定窗口显示方式
-        if window_memory in ('size', 'size_and_position') and cfg.get_value('window_maximized', False):
+        if self.start_minimized_to_tray:
+            # 最小化到托盘启动：不显示主窗口与启动画面（SplashScreen 是主窗口子控件，随父窗口隐藏），直接进托盘
+            self.hide()
+        elif window_memory in ('size', 'size_and_position') and cfg.get_value('window_maximized', False):
             self.showMaximized()
         else:
             self.show()
 
         QApplication.processEvents()
+
+        if self.start_minimized_to_tray:
+            # 托盘启动跳过了 show() 的几何同步：构造期堆积的窗口几何事件会在 processEvents 中被处理，
+            # 把窗口尺寸打回原生默认值（500x500），导致从托盘恢复后窗口异常变小，需重新应用一次几何
+            self.setGeometry(target_geometry)
 
     def _baseTitleBarText(self):
         return f"March7th Assistant {cfg.version}"
@@ -358,6 +387,21 @@ class MainWindow(MSFluentWindow):
             self.tray_icon.activated.connect(self.onTrayIconActivated)
         self.tray_icon.show()
 
+    def is_minimized_to_tray(self) -> bool:
+        """是否处于最小化到托盘状态（主窗口隐藏且托盘图标可见）"""
+        try:
+            return not self.isVisible() and self.tray_icon.isVisible()
+        except Exception:
+            return False
+
+    def showEvent(self, event):
+        """主窗口显示时补做静默启动推迟的启动检查（检查更新/公告）"""
+        super().showEvent(event)
+        if self._defer_startup_checks:
+            self._defer_startup_checks = False
+            checkUpdate(self, flag=True)
+            checkAnnouncement(self)
+
     def _show_main_window(self):
         """显示主界面，macOS 下确保窗口置顶"""
         self.showNormal()
@@ -472,7 +516,7 @@ class MainWindow(MSFluentWindow):
         except Exception as e:
             self.navigationInterface.setEnabled(True)
             InfoBar.warning(
-                title='语言切换失败',
+                title=tr('语言切换失败'),
                 content=str(e),
                 orient=Qt.Horizontal,
                 isClosable=True,
@@ -483,24 +527,14 @@ class MainWindow(MSFluentWindow):
 
     def _reinstall_fluent_translator(self, lang_code: str):
         """重新安装 FluentTranslator 以使 Qt 内置组件翻译同步更新"""
-        from PySide6.QtCore import QLocale
-        from qfluentwidgets import FluentTranslator
+        from app.common.translator import create_fluent_translator
         app = QApplication.instance()
         if hasattr(self, '_fluent_translator') and self._fluent_translator:
             try:
                 app.removeTranslator(self._fluent_translator)
             except Exception:
                 pass
-        if lang_code == 'zh_TW':
-            self._fluent_translator = FluentTranslator(QLocale(QLocale.Language.Chinese, QLocale.Country.Taiwan))
-        elif lang_code == 'ja_JP':
-            self._fluent_translator = FluentTranslator(QLocale(QLocale.Language.Japanese, QLocale.Country.Japan))
-        elif lang_code == 'ko_KR':
-            self._fluent_translator = FluentTranslator(QLocale(QLocale.Language.Korean, QLocale.Country.SouthKorea))
-        elif lang_code == 'en_US':
-            self._fluent_translator = FluentTranslator(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
-        else:
-            self._fluent_translator = FluentTranslator(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+        self._fluent_translator = create_fluent_translator(lang_code)
         app.installTranslator(self._fluent_translator)
 
     def _rebuild_interfaces_for_language(self):
@@ -630,23 +664,27 @@ class MainWindow(MSFluentWindow):
         self._do_quit()
 
     def _saveWindowState(self):
-        """保存窗口尺寸、位置和最大化状态到配置文件"""
+        """保存窗口尺寸、位置和最大化状态到配置文件（批量一次落盘）"""
         try:
             is_maximized = self.isMaximized()
-            cfg.set_value('window_maximized', is_maximized)
-
-            window_memory = cfg.get_value('window_memory', 'size')
+            log.debug(f"[config-save] 退出保存窗口状态开始: maximized={is_maximized}")
 
             # 只在非最大化状态下保存窗口尺寸和位置
+            values = {'window_maximized': is_maximized}
             if not is_maximized:
+                window_memory = cfg.get_value('window_memory', 'size')
                 if window_memory in ('size', 'size_and_position'):
-                    cfg.set_value('window_width', self.width())
-                    cfg.set_value('window_height', self.height())
+                    values['window_width'] = self.width()
+                    values['window_height'] = self.height()
                 if window_memory in ('position', 'size_and_position'):
-                    cfg.set_value('window_x', self.x())
-                    cfg.set_value('window_y', self.y())
-        except Exception:
-            pass
+                    values['window_x'] = self.x()
+                    values['window_y'] = self.y()
+            # 批量一次落盘：逐项 set_value 会保存多次，放大与更新器并发写的冲突窗口
+            cfg.set_values(values)
+            log.debug("[config-save] 退出保存窗口状态完成")
+        except Exception as e:
+            import traceback
+            log.error(f"[config-save] 退出保存窗口状态失败: {e}\n{traceback.format_exc()}")
 
     def _on_config_file_changed(self):
         """重新加载配置文件并刷新界面"""
@@ -655,6 +693,7 @@ class MainWindow(MSFluentWindow):
             is_in_setting_interface = self.stackedWidget.currentWidget() == self.settingInterface
 
             # 重新加载配置
+            log.info("[config-watch] 重新加载配置文件并刷新界面")
             cfg._load_config(None, save=False)
 
             # 重新初始化通知器
@@ -735,6 +774,7 @@ class MainWindow(MSFluentWindow):
         e: 可选的 QCloseEvent，用于调用 e.accept()
         """
         # 保存窗口尺寸和最大化状态
+        log.info(f"[config-save] 主程序退出，保存窗口状态 PID={os.getpid()}（更新期间此处会与更新器并发写配置）")
         self._saveWindowState()
 
         try:
@@ -903,7 +943,7 @@ class MainWindow(MSFluentWindow):
         elif result == GameStartStatus.LOCAL_LAUNCH_FAIL:
             InfoBar.warning(
                 title=tr('游戏路径配置错误(╥╯﹏╰╥)'),
-                content=tr("请在“设置”-->“程序”中配置"),
+                content=tr("请在“设置”→“程序”中配置"),
                 orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,

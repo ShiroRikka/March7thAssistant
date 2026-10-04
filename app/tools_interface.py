@@ -5,10 +5,11 @@ from qfluentwidgets import SettingCardGroup, PushSettingCard, ScrollArea, InfoBa
 from .card.pushsettingcard1 import PushSettingCardCode
 from .card.autoplot_setting_card import AutoPlotSettingCard
 from .common.style_sheet import StyleSheet
+from .common.icon import UiIcon
 import tasks.tool as tool
 import base64
 import subprocess
-import pyperclip
+from utils import clipboard
 from module.config import cfg
 from tasks.base.tasks import start_task
 import os
@@ -29,13 +30,13 @@ class ToolsInterface(ScrollArea):
 
         self.ToolsGroup = SettingCardGroup(tr('工具箱'), self.scrollWidget)
         self.automaticPlotCard = AutoPlotSettingCard(
-            FIF.IMAGE_EXPORT,
+            FIF.CHAT,
             tr("自动对话"),
             tr("进入剧情页面后自动开始运行，支持大于等于 1920*1080 的 16:9 分辨率，不支持云·星穹铁道")
         )
         self.gameScreenshotCard = PushSettingCard(
             tr('捕获'),
-            FIF.CLIPPING_TOOL,
+            FIF.CAMERA,
             tr("游戏截图"),
             tr("检查程序获取的图像是否正确，支持OCR识别文字（可用于自行排查异常）")
         )
@@ -47,20 +48,20 @@ class ToolsInterface(ScrollArea):
         )
         self.redemptionCodeCard = PushSettingCardCode(
             tr('执行'),
-            FIF.BOOK_SHELF,
+            UiIcon.TICKET,
             tr("兑换码"),
             "redemption_code",
             self
         )
         self.cloudTouchCard = PushSettingCard(
             tr('启动'),
-            FIF.CLOUD,
+            UiIcon.TAP,
             tr("触屏模式"),
             tr("以云游戏移动端 UI 的方式启动游戏，可搭配 UU远程 平板触控模式，启动后会将命令复制到剪贴板内")
         )
         self.screenTestCard = PushSettingCard(
             tr('测试'),
-            FIF.CHECKBOX,
+            UiIcon.BEAKER,
             tr("界面可切换性测试"),
             tr("以最短路径遍历所有可达界面，验证界面切换是否正常")
         )
@@ -183,7 +184,7 @@ class ToolsInterface(ScrollArea):
             if not game_path or not os.path.exists(game_path):
                 InfoBar.warning(
                     title=tr('游戏路径配置错误(╥╯﹏╰╥)'),
-                    content=tr("请在“设置”-->“程序”中配置正确的游戏路径"),
+                    content=tr("请在“设置”→“程序”中配置正确的游戏路径"),
                     orient=Qt.Orientation.Horizontal,
                     isClosable=True,
                     position=InfoBarPosition.TOP,
@@ -220,7 +221,7 @@ class ToolsInterface(ScrollArea):
                     cp.write(f)
             args = ["-HKSR", "-EnableMobileUI"]
             subprocess.Popen([exe_path] + args, cwd=config_dir)
-            pyperclip.copy(f'cd "{config_dir}" && "{exe_path}" {" ".join(args)}')
+            clipboard.copy(f'cd "{config_dir}" && "{exe_path}" {" ".join(args)}')
             InfoBar.success(
                 title=tr('启动成功(＾∀＾●)'),
                 content=tr("已将命令复制到剪贴板"),

@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import ctypes
 import os
+import sys
 import threading
 import time
 from ctypes import wintypes
 from dataclasses import dataclass
 
 from module.logger import log
-from module.localization import load_language, tr
+from module.localization import load_language, tr, tn
 from module.update.downloader import format_size
 from module.update.update_engine import UpdateBlockedError, UpdateCancelledError, UpdateEngine, UpdateProgress, UpdateStage
 from module.update.version_check import check_for_update
@@ -364,7 +365,8 @@ class NativeUpdaterWindow:
 
     def _worker_main(self):
         try:
-            self._log("info", f"更新程序启动，模式={self.options.mode}")
+            self._log("info", f"更新程序启动，模式={self.options.mode} PID={os.getpid()} "
+                              f"cwd={os.getcwd()} argv={sys.argv if hasattr(sys, 'argv') else []}")
             engine = UpdateEngine(progress_callback=self._on_progress, log_callback=self._on_engine_log)
             self._engine = engine
             retry_context = self._retry_context
@@ -457,7 +459,7 @@ class NativeUpdaterWindow:
             self._log("error", f"更新被文件占用阻止：{str(e)}")
             self._set_result("blocked", str(e), e.locked_files)
         except Exception as e:
-            self._log("error", f"更新过程出错：{str(e) or tr('更新失败')}")
+            self._log("error", f"更新过程出错：{str(e) or '更新失败'}")
             with self._lock:
                 self._retry_context = None
             self._set_result("failed", str(e) or tr("更新失败"))
@@ -638,7 +640,7 @@ class NativeUpdaterWindow:
                 if remaining <= 0:
                     user32.DestroyWindow(self.hwnd)
                 else:
-                    countdown_text = tr("{seconds} 秒后自动退出").format(seconds=int(remaining) + 1)
+                    countdown_text = tn("{count} 秒后自动退出", int(remaining) + 1)
                     with self._lock:
                         self._detail_text = countdown_text
             return
@@ -724,6 +726,7 @@ def run_cleanup_backup(options: HelperOptions) -> int:
     if not backup:
         return 0
 
+    log.info(f"备份清理程序启动 PID={os.getpid()} cwd={os.getcwd()} 备份={backup}")
     engine = UpdateEngine(logger=log)
     if options.wait_pid:
         if not engine.wait_for_process_exit(options.wait_pid, timeout=CLEANUP_BACKUP_WAIT_TIMEOUT):
@@ -748,6 +751,7 @@ def run_cleanup_backup(options: HelperOptions) -> int:
 
 
 def main(argv=None) -> int:
+    log.info(f"March7th Updater 进程入口 PID={os.getpid()} cwd={os.getcwd()} argv={argv}")
     load_language()
     options = parse_args(argv)
     if options.mode == "cleanup-backup":
